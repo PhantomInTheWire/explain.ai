@@ -1,33 +1,56 @@
 import os
-from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-@dataclass
-class Settings:
-    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379")
-    weaviate_url: str = os.getenv("WEAVIATE_URL", "http://localhost:8080")
-    weaviate_api_key: Optional[str] = os.getenv("WEAVIATE_API_KEY")
-    session_ttl_seconds: int = int(os.getenv("SESSION_TTL_SECONDS", "3600"))
-    max_concurrent_jobs_per_session: int = int(os.getenv("MAX_CONCURRENT_JOBS", "3"))
-    data_dir: str = os.getenv("DATA_DIR", "/data/sessions")
-    cleanup_interval_seconds: int = int(os.getenv("CLEANUP_INTERVAL_SECONDS", "300"))
-    google_api_key: Optional[str] = os.getenv("GOOGLE_API_KEY")
-    convertapi_key: Optional[str] = os.getenv("CONVERTAPI_KEY")
-    google_application_credentials: Optional[str] = os.getenv(
-        "GOOGLE_APPLICATION_CREDENTIALS"
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
-    api_base_url: str = os.getenv("API_BASE_URL", "http://localhost:8000")
-    cors_origins: list[str] = None
-    debug: bool = os.getenv("DEBUG", "false").lower() == "true"
 
-    def __post_init__(self):
-        if self.cors_origins is None:
-            self.cors_origins = os.getenv(
-                "CORS_ORIGINS",
-                "http://localhost:3000,http://localhost:5173,http://localhost:80,http://localhost",
-            ).split(",")
-        os.makedirs(self.data_dir, exist_ok=True)
+    redis_url: str = "redis://localhost:6379"
+    weaviate_url: str = "http://localhost:8080"
+    weaviate_api_key: Optional[str] = None
+    session_ttl_seconds: int = 3600
+    max_concurrent_jobs_per_session: int = Field(default=3, alias="MAX_CONCURRENT_JOBS")
+    data_dir: str = "/data/sessions"
+    cleanup_interval_seconds: int = 300
+    google_api_key: Optional[str] = None
+    convertapi_key: Optional[str] = None
+    google_application_credentials: Optional[str] = None
+    api_base_url: str = "http://localhost:8000"
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:80",
+        "http://localhost",
+    ]
+    debug: bool = False
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(",")]
+        return v
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug(cls, v):
+        if isinstance(v, str):
+            return v.lower() == "true"
+        return v
+
+    def model_post_init(self, __context) -> None:
+        try:
+            Path(self.data_dir).mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass  # Directory creation may fail in read-only environments
 
 
 settings = Settings()
