@@ -1,133 +1,108 @@
-import axios from "axios";
-import { useFileStore, useProgressStore } from "../../store";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import apiClient from "../../api/client";
+import { useFileStore, useProgressStore, useSessionStore } from "../../store";
 
 export default function GeneratePage() {
-    const BASE_URL = `http://localhost:8000`;
     const [fileUploaded, setFileUploaded] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [
-        isValidFile,
-        file,
-        filename,
-        slidesGenerated,
-        videoGenerated,
-        setSlidesGenerated,
-        setVideoGenerated,
-    ] = useFileStore((state) => [
-        state.validFile,
-        state.file,
-        state.fileName,
-        state.slidesGenerated,
-        state.videoGenerated,
-        state.setSlidesGenerated,
-        state.setVideoGenerated,
-    ]);
+    const [progress, setProgress] = useState(0);
+    const [statusMessage, setStatusMessage] = useState("");
+
+    const [isValidFile, file, filename, setSlidesGenerated, setVideoGenerated] =
+        useFileStore((state) => [
+            state.validFile,
+            state.file,
+            state.fileName,
+            state.setSlidesGenerated,
+            state.setVideoGenerated,
+        ]);
+
     const [outputForms, selectedTheme, setCurrentState] = useProgressStore(
         (state) => [state.outputs, state.currentTheme, state.setCurrentState]
     );
 
+    const sessionId = useSessionStore((state) => state.sessionId);
+    const createSession = useSessionStore((state) => state.createSession);
+
+    useEffect(() => {
+        createSession();
+    }, [createSession]);
+
     const choices = [
         { title: "File", isList: false, state: filename, section: "Upload" },
-        {
-            title: "Output",
-            isList: true,
-            state: outputForms.join(", "),
-            section: "Select",
-        },
-        {
-            title: "Theme",
-            isList: false,
-            state: selectedTheme,
-            section: "Customize",
-        },
+        { title: "Output", isList: true, state: outputForms.join(", "), section: "Select" },
+        { title: "Theme", isList: false, state: selectedTheme, section: "Customize" },
     ];
 
-    const ensureFileUploaded = () => {
-        if (fileUploaded) return;
+    const ensureFileUploaded = async () => {
+        if (fileUploaded || !file) return;
 
-        const formData = new FormData();
-        formData.append("file", file || "");
-        const config = {
-            headers: {
-                "Content-Type": "multipart/form-data",
-            },
-        };
-        // setLoading(true);
-        axios
-            .post(`${BASE_URL}/upload_pdf/`, formData, config)
-            .then((response) => {
-                setFileUploaded(true);
-                // setPdfUploaded(true);
-                // excuteRequest(path, method);
-            })
-            .catch((error) => {
-                console.error("Error uploading file:", error);
-            });
+        setStatusMessage("Uploading PDF...");
+        setProgress(5);
+
+        try {
+            const { job_id } = await apiClient.uploadPdf(file);
+            await apiClient.pollJobUntilComplete(job_id, (p) => setProgress(Math.min(p, 20)));
+            setFileUploaded(true);
+            setProgress(20);
+        } catch (error) {
+            console.error("Error uploading file:", error);
+            throw error;
+        }
     };
 
-    const handleGenerate = () => {
-        ensureFileUploaded();
-
-        const formData = {
-            theme: selectedTheme,
-        };
-
+    const handleGenerate = async () => {
         setLoading(true);
-        if (outputForms.length == 2) {
-            axios
-                .post(`${BASE_URL}/get_presentation/`, formData)
-                .then((slidesResponse) => {
-                    setSlidesGenerated(true);
-                    axios
-                        .post(`${BASE_URL}/generate_video/`, formData)
-                        .then((videoResponse) => {
-                            setVideoGenerated(true);
-                            setLoading(false);
-                        });
-                })
-                .catch((error) => {
-                    console.error("Error generating content:", error);
-                    setLoading(false);
-                });
-            return;
-        }
+        setProgress(0);
 
-        if (outputForms[0] == "Slides") {
-            axios
-                .post(`${BASE_URL}/get_presentation/`, formData)
-                .then((slidesResponse) => {
-                    setSlidesGenerated(true);
-                    setLoading(false);
-                })
-                .catch((error) => {
-                    console.error("Error generating content:", error);
-                    setLoading(false);
-                });
-            return;
-        }
-        axios
-            .post(`${BASE_URL}/generate_video/`, formData)
-            .then((videoResponse) => {
+        try {
+            await ensureFileUploaded();
+
+            if (outputForms.includes("Slides") || outputForms.length === 2) {
+                setStatusMessage("Generating presentation...");
+                const { job_id } = await apiClient.generatePresentation(selectedTheme);
+                await apiClient.pollJobUntilComplete(job_id, (p) =>
+                    setProgress(20 + Math.min(p * 0.4, 40))
+                );
+                setSlidesGenerated(true);
+                setProgress(60);
+            }
+
+            if (outputForms.includes("Video") || outputForms.length === 2) {
+                setStatusMessage("Generating video...");
+                const { job_id } = await apiClient.generateVideo();
+                await apiClient.pollJobUntilComplete(job_id, (p) =>
+                    setProgress(60 + Math.min(p * 0.4, 40))
+                );
                 setVideoGenerated(true);
-                setLoading(false);
-            })
-            .catch((error) => {
-                console.error("Error generating content:", error);
-                setLoading(false);
-            });
+                setProgress(100);
+            }
+
+            setStatusMessage("Complete!");
+            setCurrentState("Output");
+        } catch (error) {
+            console.error("Error generating content:", error);
+            setStatusMessage("Error occurred. Please try again.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
         <div className="byteContainer flex flex-col items-center mx-auto py-12 px-8 md:px-20 bg-translucent-normal border border-[#ffffff1c] rounded-lg space-y-10">
             <h1 className="text-2xl font-medium">Generate</h1>
+
+            {sessionId && (
+                <p className="text-xs text-secondary">Session: {sessionId.slice(0, 8)}...</p>
+            )}
+
             <div className="space-y-2">
                 <div className="flex flex-col space-y-6">
                     {choices.map((option, index) => (
                         <div className="flex flex-col space-y-2" key={index}>
                             <p className="text-md">{option.title}</p>
                             <button
-                                className={`flex items-center gap-4 px-4 py-2 rounded-lg border-2 border-[#ffffff1c] text-left [&:hover>svg]:opacity-100`}
+                                className="flex items-center gap-4 px-4 py-2 rounded-lg border-2 border-[#ffffff1c] text-left [&:hover>svg]:opacity-100"
                                 onClick={() => setCurrentState(option.section)}
                             >
                                 <p className="w-full min-w-40 md:min-w-60 text-left text-secondary text-xs">
@@ -141,13 +116,29 @@ export default function GeneratePage() {
                     ))}
                 </div>
             </div>
+
+            {loading && (
+                <div className="w-full">
+                    <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                        <div
+                            className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300"
+                            style={{ width: `${progress}%` }}
+                        />
+                    </div>
+                    <p className="text-sm text-secondary mt-2">{statusMessage}</p>
+                </div>
+            )}
+
             {isValidFile ? (
                 <button
                     className="text-xl font-semibold px-[.1rem] py-[.1rem] bgGradient rounded-lg"
-                    onClick={() => handleGenerate()}
+                    onClick={handleGenerate}
+                    disabled={loading}
                 >
                     <p className="w-full px-3 py-1 bg-offBlack rounded-lg">
-                        <span className="textGradient">Generate</span>
+                        <span className="textGradient">
+                            {loading ? "Generating..." : "Generate"}
+                        </span>
                     </p>
                 </button>
             ) : (
