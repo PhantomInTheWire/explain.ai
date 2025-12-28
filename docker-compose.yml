@@ -32,6 +32,7 @@ services:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - CONVERTAPI_KEY=${CONVERTAPI_KEY}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
+      - DEBUG=false
     volumes:
       - sessions_data:/data/sessions
       - ./credentials.json:/app/credentials.json:ro
@@ -49,6 +50,56 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  celery-worker:
+    build:
+      context: ./backend
+    command: celery -A backend.core.celery:celery_app worker -Q default --loglevel=info --concurrency=4
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - WEAVIATE_URL=http://weaviate:8080
+      - DATA_DIR=/data/sessions
+      - SESSION_TTL_SECONDS=3600
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - CONVERTAPI_KEY=${CONVERTAPI_KEY}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
+      - DEBUG=false
+    volumes:
+      - sessions_data:/data/sessions
+      - ./credentials.json:/app/credentials.json:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      weaviate:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - explainai
+
+  celery-video-worker:
+    build:
+      context: ./backend
+    command: celery -A backend.core.celery:celery_app worker -Q video --loglevel=info --concurrency=1
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - WEAVIATE_URL=http://weaviate:8080
+      - DATA_DIR=/data/sessions
+      - SESSION_TTL_SECONDS=3600
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - CONVERTAPI_KEY=${CONVERTAPI_KEY}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
+      - DEBUG=false
+    volumes:
+      - sessions_data:/data/sessions
+      - ./credentials.json:/app/credentials.json:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      weaviate:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - explainai
 
   redis:
     image: redis:7-alpine

@@ -1,28 +1,20 @@
-import json
-import logging
-import os
 from contextlib import asynccontextmanager
 
-import convertapi
-from fastapi import FastAPI, UploadFile, File, Request, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from backend.apps.audiops import generate_audio_files
-from backend.apps.pdfops import upload_file
-from backend.apps.ppt_generator import generate_presentation
-from backend.apps.promptops import generate_explanations
-from backend.apps.videops import pdf_to_video
 from backend.core.config import settings
+from backend.core.logging import setup_logging, get_logger
 from backend.core.session import session_manager
-from backend.core.jobs import JobManager, JobStatus, JobType
+from backend.core.jobs import JobManager, JobType
 from backend.core.vectorstore import vectorstore_manager
 from backend.core.storage import storage_manager
 from backend.core.cleanup import cleanup_task
 from backend.core.middleware import SessionMiddleware, get_session_id
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+setup_logging(debug=settings.debug)
+log = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -30,12 +22,12 @@ async def lifespan(app: FastAPI):
     await session_manager.initialize()
     await vectorstore_manager.initialize()
     await cleanup_task.start()
-    logger.info("Application started")
+    log.info("application started")
     yield
     await cleanup_task.stop()
     vectorstore_manager.close()
     await session_manager.close()
-    logger.info("Application stopped")
+    log.info("application stopped")
 
 
 app = FastAPI(title="ExplainAI API", version="2.0", lifespan=lifespan)
@@ -98,40 +90,8 @@ async def get_job(job_id: str):
     return {"job": job, "result": result}
 
 
-async def run_upload_job(
-    job_id: str, session_id: str, file_content: bytes, filename: str, content_type: str
-):
-    job_manager = JobManager(session_manager.redis)
-    try:
-        await job_manager.update_job_status(job_id, JobStatus.PROCESSING, progress=10)
-
-        from io import BytesIO
-        from fastapi import UploadFile as UP
-
-        file_obj = BytesIO(file_content)
-        file_obj.name = filename
-
-        class FakeUploadFile:
-            def __init__(self, content, name, ctype):
-                self._content = content
-                self.filename = name
-                self.content_type = ctype
-
-            async def read(self):
-                return self._content
-
-        fake_file = FakeUploadFile(file_content, filename, content_type)
-        result = await upload_file(session_id, fake_file)
-        await job_manager.complete_job(job_id, result)
-    except Exception as e:
-        logger.error(f"Upload job failed: {e}")
-        await job_manager.fail_job(job_id, str(e))
-
-
 @app.post("/api/upload_pdf/")
-async def upload_pdf_endpoint(
-    request: Request, background_tasks: BackgroundTasks, file: UploadFile = File(...)
-):
+async def upload_pdf_endpoint(request: Request, file: UploadFile = File(...)):
     session_id = get_session_id(request)
     job_manager = JobManager(session_manager.redis)
 
@@ -140,46 +100,22 @@ async def upload_pdf_endpoint(
         raise HTTPException(status_code=429, detail=error)
 
     file_content = await file.read()
-    background_tasks.add_task(
-        run_upload_job,
+
+    from backend.apps.tasks import upload_pdf_task
+
+    upload_pdf_task.delay(
         job_id,
         session_id,
         file_content,
-        file.filename,
-        file.content_type,
+        file.filename or "uploaded.pdf",
+        file.content_type or "application/pdf",
     )
 
     return {"job_id": job_id, "status": "pending"}
 
 
-async def run_presentation_job(job_id: str, session_id: str, theme: str):
-    job_manager = JobManager(session_manager.redis)
-    try:
-        await job_manager.update_job_status(job_id, JobStatus.PROCESSING, progress=10)
-
-        pptx_path = await generate_presentation(session_id, theme)
-        await job_manager.update_job_status(job_id, JobStatus.PROCESSING, progress=70)
-
-        pdf_path = storage_manager.get_output_path(session_id, "presentation.pdf")
-        convertapi.api_secret = settings.convertapi_key
-        convertapi.convert(
-            "pdf", {"File": str(pptx_path)}, from_format="pptx"
-        ).save_files(str(pdf_path))
-
-        result = {
-            "pptx_url": f"{settings.api_base_url}/api/sessions/{session_id}/files/presentation.pptx",
-            "pdf_url": f"{settings.api_base_url}/api/sessions/{session_id}/files/presentation.pdf",
-        }
-        await job_manager.complete_job(job_id, result)
-    except Exception as e:
-        logger.error(f"Presentation job failed: {e}")
-        await job_manager.fail_job(job_id, str(e))
-
-
 @app.post("/api/get_presentation/")
-async def get_presentation_endpoint(
-    request: Request, background_tasks: BackgroundTasks
-):
+async def get_presentation_endpoint(request: Request):
     session_id = get_session_id(request)
     job_manager = JobManager(session_manager.redis)
 
@@ -196,36 +132,15 @@ async def get_presentation_endpoint(
     if error:
         raise HTTPException(status_code=429, detail=error)
 
-    background_tasks.add_task(run_presentation_job, job_id, session_id, theme)
+    from backend.apps.tasks import generate_presentation_task
+
+    generate_presentation_task.delay(job_id, session_id, theme)
 
     return {"job_id": job_id, "status": "pending"}
 
 
-async def run_video_job(job_id: str, session_id: str):
-    job_manager = JobManager(session_manager.redis)
-    try:
-        await job_manager.update_job_status(job_id, JobStatus.PROCESSING, progress=10)
-
-        explanations = await generate_explanations(session_id)
-        await job_manager.update_job_status(job_id, JobStatus.PROCESSING, progress=30)
-
-        await generate_audio_files(session_id, json.loads(explanations))
-        await job_manager.update_job_status(job_id, JobStatus.PROCESSING, progress=60)
-
-        pdf_path = storage_manager.get_output_path(session_id, "presentation.pdf")
-        await pdf_to_video(session_id, pdf_path)
-
-        result = {
-            "video_url": f"{settings.api_base_url}/api/sessions/{session_id}/files/video.mp4"
-        }
-        await job_manager.complete_job(job_id, result)
-    except Exception as e:
-        logger.error(f"Video job failed: {e}")
-        await job_manager.fail_job(job_id, str(e))
-
-
 @app.post("/api/generate_video/")
-async def generate_video_endpoint(request: Request, background_tasks: BackgroundTasks):
+async def generate_video_endpoint(request: Request):
     session_id = get_session_id(request)
     job_manager = JobManager(session_manager.redis)
 
@@ -233,7 +148,9 @@ async def generate_video_endpoint(request: Request, background_tasks: Background
     if error:
         raise HTTPException(status_code=429, detail=error)
 
-    background_tasks.add_task(run_video_job, job_id, session_id)
+    from backend.apps.tasks import generate_video_task
+
+    generate_video_task.delay(job_id, session_id)
 
     return {"job_id": job_id, "status": "pending"}
 
