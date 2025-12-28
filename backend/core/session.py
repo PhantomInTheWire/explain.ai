@@ -4,8 +4,8 @@ from typing import Optional
 
 import redis.asyncio as redis
 
-from backend.core.config import settings
-from backend.core.logging import get_logger
+from core.config import settings
+from core.logging import get_logger
 
 log = get_logger(__name__)
 

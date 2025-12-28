@@ -4,14 +4,14 @@ from fastapi import FastAPI, UploadFile, File, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from backend.core.config import settings
-from backend.core.logging import setup_logging, get_logger
-from backend.core.session import session_manager
-from backend.core.jobs import JobManager, JobType
-from backend.core.vectorstore import vectorstore_manager
-from backend.core.storage import storage_manager
-from backend.core.cleanup import cleanup_task
-from backend.core.middleware import SessionMiddleware, get_session_id
+from core.config import settings
+from core.logging import setup_logging, get_logger
+from core.session import session_manager
+from core.jobs import JobManager, JobType
+from core.vectorstore import vectorstore_manager
+from core.storage import storage_manager
+from core.cleanup import cleanup_task
+from core.middleware import SessionMiddleware, get_session_id
 
 setup_logging(debug=settings.debug)
 log = get_logger(__name__)
@@ -101,7 +101,7 @@ async def upload_pdf_endpoint(request: Request, file: UploadFile = File(...)):
 
     file_content = await file.read()
 
-    from backend.apps.tasks import upload_pdf_task
+    from apps.tasks import upload_pdf_task
 
     upload_pdf_task.delay(
         job_id,
@@ -132,7 +132,7 @@ async def get_presentation_endpoint(request: Request):
     if error:
         raise HTTPException(status_code=429, detail=error)
 
-    from backend.apps.tasks import generate_presentation_task
+    from apps.tasks import generate_presentation_task
 
     generate_presentation_task.delay(job_id, session_id, theme)
 
@@ -148,7 +148,7 @@ async def generate_video_endpoint(request: Request):
     if error:
         raise HTTPException(status_code=429, detail=error)
 
-    from backend.apps.tasks import generate_video_task
+    from apps.tasks import generate_video_task
 
     generate_video_task.delay(job_id, session_id)
 

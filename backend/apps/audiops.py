@@ -3,8 +3,8 @@ from pathlib import Path
 
 from google.cloud import texttospeech
 
-from backend.core.storage import storage_manager
-from backend.core.logging import get_logger
+from core.storage import storage_manager
+from core.logging import get_logger
 
 log = get_logger(__name__)
 

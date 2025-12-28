@@ -5,8 +5,8 @@ from typing import Optional
 
 import aiofiles
 
-from backend.core.config import settings
-from backend.core.logging import get_logger
+from core.config import settings
+from core.logging import get_logger
 
 log = get_logger(__name__)
 

@@ -1,7 +1,7 @@
 from celery import Celery
 
-from backend.core.config import settings
-from backend.core.logging import setup_logging, get_logger
+from core.config import settings
+from core.logging import setup_logging, get_logger
 
 setup_logging(debug=settings.debug)
 log = get_logger(__name__)
@@ -10,7 +10,7 @@ celery_app = Celery(
     "explainai",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["backend.apps.tasks"],
+    include=["apps.tasks"],
 )
 
 celery_app.conf.update(
@@ -26,7 +26,7 @@ celery_app.conf.update(
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     task_routes={
-        "backend.apps.tasks.generate_video_task": {"queue": "video"},
+        "apps.tasks.generate_video_task": {"queue": "video"},
     },
     task_default_queue="default",
 )

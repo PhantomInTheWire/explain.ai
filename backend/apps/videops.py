@@ -4,8 +4,8 @@ from pathlib import Path
 import moviepy.editor as mpe
 import pypdfium2 as pdfium
 
-from backend.core.storage import storage_manager
-from backend.core.logging import get_logger
+from core.storage import storage_manager
+from core.logging import get_logger
 
 log = get_logger(__name__)
 

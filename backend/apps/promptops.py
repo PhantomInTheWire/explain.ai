@@ -7,9 +7,9 @@ from langchain.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import Document
 
-from backend.core.vectorstore import vectorstore_manager
-from backend.core.config import settings
-from backend.core.logging import get_logger
+from core.vectorstore import vectorstore_manager
+from core.config import settings
+from core.logging import get_logger
 
 log = get_logger(__name__)
 

@@ -4,9 +4,9 @@ from pathlib import Path
 
 import convertapi
 
-from backend.core.celery import celery_app
-from backend.core.config import settings
-from backend.core.logging import get_logger
+from core.celery import celery_app
+from core.config import settings
+from core.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -43,7 +43,7 @@ def fail_job(job_id: str, error: str):
     update_job_progress(job_id, "failed", 0, error)
 
 
-@celery_app.task(bind=True, name="backend.apps.tasks.upload_pdf_task")
+@celery_app.task(bind=True, name="apps.tasks.upload_pdf_task")
 def upload_pdf_task(
     self,
     job_id: str,
@@ -56,7 +56,7 @@ def upload_pdf_task(
     try:
         update_job_progress(job_id, "processing", 10)
 
-        from backend.apps.pdfops import upload_file_sync
+        from apps.pdfops import upload_file_sync
 
         result = upload_file_sync(session_id, file_content, filename, content_type)
 
@@ -68,7 +68,7 @@ def upload_pdf_task(
         raise
 
 
-@celery_app.task(bind=True, name="backend.apps.tasks.generate_presentation_task")
+@celery_app.task(bind=True, name="apps.tasks.generate_presentation_task")
 def generate_presentation_task(self, job_id: str, session_id: str, theme: str):
     log.info(
         "presentation generation started",
@@ -79,13 +79,13 @@ def generate_presentation_task(self, job_id: str, session_id: str, theme: str):
     try:
         update_job_progress(job_id, "processing", 10)
 
-        from backend.apps.ppt_generator import generate_presentation_sync
+        from apps.ppt_generator import generate_presentation_sync
 
         pptx_path = generate_presentation_sync(session_id, theme)
 
         update_job_progress(job_id, "processing", 70)
 
-        from backend.core.storage import storage_manager
+        from core.storage import storage_manager
 
         pdf_path = storage_manager.get_output_path(session_id, "presentation.pdf")
 
@@ -107,27 +107,27 @@ def generate_presentation_task(self, job_id: str, session_id: str, theme: str):
 
 
 @celery_app.task(
-    bind=True, name="backend.apps.tasks.generate_video_task", queue="video"
+    bind=True, name="apps.tasks.generate_video_task", queue="video"
 )
 def generate_video_task(self, job_id: str, session_id: str):
     log.info("video generation started", job_id=job_id, session_id=session_id)
     try:
         update_job_progress(job_id, "processing", 10)
 
-        from backend.apps.promptops import generate_explanations_sync
+        from apps.promptops import generate_explanations_sync
 
         explanations = generate_explanations_sync(session_id)
 
         update_job_progress(job_id, "processing", 30)
 
-        from backend.apps.audiops import generate_audio_files_sync
+        from apps.audiops import generate_audio_files_sync
 
         generate_audio_files_sync(session_id, json.loads(explanations))
 
         update_job_progress(job_id, "processing", 60)
 
-        from backend.core.storage import storage_manager
-        from backend.apps.videops import pdf_to_video_sync
+        from core.storage import storage_manager
+        from apps.videops import pdf_to_video_sync
 
         pdf_path = storage_manager.get_output_path(session_id, "presentation.pdf")
         pdf_to_video_sync(session_id, pdf_path)

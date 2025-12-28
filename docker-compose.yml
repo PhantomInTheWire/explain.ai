@@ -54,7 +54,7 @@ services:
   celery-worker:
     build:
       context: ./backend
-    command: celery -A backend.core.celery:celery_app worker -Q default --loglevel=info --concurrency=4
+    command: celery -A core.celery:celery_app worker -Q default --loglevel=info --concurrency=4
     environment:
       - REDIS_URL=redis://redis:6379
       - WEAVIATE_URL=http://weaviate:8080
@@ -79,7 +79,7 @@ services:
   celery-video-worker:
     build:
       context: ./backend
-    command: celery -A backend.core.celery:celery_app worker -Q video --loglevel=info --concurrency=1
+    command: celery -A core.celery:celery_app worker -Q video --loglevel=info --concurrency=1
     environment:
       - REDIS_URL=redis://redis:6379
       - WEAVIATE_URL=http://weaviate:8080

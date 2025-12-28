@@ -1,8 +1,8 @@
 from fastapi import Request, Response, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from backend.core.session import session_manager
-from backend.core.logging import get_logger
+from core.session import session_manager
+from core.logging import get_logger
 
 log = get_logger(__name__)
 

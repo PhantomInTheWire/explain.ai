@@ -1,11 +1,11 @@
 import asyncio
 from typing import Optional
 
-from backend.core.config import settings
-from backend.core.session import session_manager
-from backend.core.vectorstore import vectorstore_manager
-from backend.core.storage import storage_manager
-from backend.core.logging import get_logger
+from core.config import settings
+from core.session import session_manager
+from core.vectorstore import vectorstore_manager
+from core.storage import storage_manager
+from core.logging import get_logger
 
 log = get_logger(__name__)
 

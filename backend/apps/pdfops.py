@@ -5,9 +5,9 @@ import pdfplumber
 from fastapi import HTTPException, UploadFile
 from langchain.text_splitter import CharacterTextSplitter
 
-from backend.core.vectorstore import vectorstore_manager
-from backend.core.storage import storage_manager
-from backend.core.logging import get_logger
+from core.vectorstore import vectorstore_manager
+from core.storage import storage_manager
+from core.logging import get_logger
 
 log = get_logger(__name__)
 

@@ -5,8 +5,8 @@ from typing import Any, Optional
 
 import redis.asyncio as redis
 
-from backend.core.config import settings
-from backend.core.logging import get_logger
+from core.config import settings
+from core.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -38,7 +38,7 @@ class JobManager:
     async def create_job(
         self, session_id: str, job_type: JobType, metadata: Optional[dict] = None
     ) -> tuple[str, Optional[str]]:
-        from backend.core.session import session_manager
+        from core.session import session_manager
         import uuid
 
         active_jobs = await session_manager.count_active_jobs(session_id)

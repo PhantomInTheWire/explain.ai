@@ -6,15 +6,15 @@ from fastapi import HTTPException
 from pptx import Presentation
 from pptx.util import Pt
 
-from backend.apps.promptops import (
+from apps.promptops import (
     process_user_question,
     process_user_question_sync,
     set_session_json_slide,
     set_session_json_slide_sync,
 )
-from backend.core.vectorstore import vectorstore_manager
-from backend.core.storage import storage_manager
-from backend.core.logging import get_logger
+from core.vectorstore import vectorstore_manager
+from core.storage import storage_manager
+from core.logging import get_logger
 
 log = get_logger(__name__)
 
