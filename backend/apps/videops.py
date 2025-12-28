@@ -1,15 +1,16 @@
-import logging
+import asyncio
 from pathlib import Path
 
 import moviepy.editor as mpe
 import pypdfium2 as pdfium
 
 from backend.core.storage import storage_manager
+from backend.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 
-async def pdf_to_video(
+def pdf_to_video_sync(
     session_id: str, pdf_path: Path, output_filename: str = "video.mp4", fps: int = 1
 ) -> Path:
     temp_images_dir = storage_manager.get_temp_images_dir(session_id)
@@ -46,5 +47,13 @@ async def pdf_to_video(
         clip.close()
     final_video.close()
 
-    logger.info(f"Generated video: {output_path}")
+    log.info("video generated", output_path=str(output_path))
     return output_path
+
+
+async def pdf_to_video(
+    session_id: str, pdf_path: Path, output_filename: str = "video.mp4", fps: int = 1
+) -> Path:
+    return await asyncio.to_thread(
+        pdf_to_video_sync, session_id, pdf_path, output_filename, fps
+    )

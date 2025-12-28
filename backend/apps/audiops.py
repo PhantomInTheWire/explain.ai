@@ -1,14 +1,15 @@
-import logging
+import asyncio
 from pathlib import Path
 
 from google.cloud import texttospeech
 
 from backend.core.storage import storage_manager
+from backend.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 
-def text_to_audio(text_block: str, slide_number: int, output_dir: Path) -> Path:
+def text_to_audio_sync(text_block: str, slide_number: int, output_dir: Path) -> Path:
     tts_client = texttospeech.TextToSpeechClient()
     synthesis_input = texttospeech.SynthesisInput({"text": text_block})
     voice = texttospeech.VoiceSelectionParams(
@@ -32,7 +33,7 @@ def text_to_audio(text_block: str, slide_number: int, output_dir: Path) -> Path:
     return output_path
 
 
-async def generate_audio_files(
+def generate_audio_files_sync(
     session_id: str, explanations_json: dict[str, str]
 ) -> list[Path]:
     audio_dir = storage_manager.get_temp_audio_dir(session_id)
@@ -41,10 +42,33 @@ async def generate_audio_files(
     for i, key in enumerate(explanations_json, 1):
         text = explanations_json[key]
         if text and text.strip():
-            audio_path = text_to_audio(text, i, audio_dir)
+            audio_path = text_to_audio_sync(text, i, audio_dir)
             generated_files.append(audio_path)
 
-    logger.info(
-        f"Generated {len(generated_files)} audio files for session {session_id}"
+    log.info("audio files generated", session_id=session_id, count=len(generated_files))
+    return generated_files
+
+
+async def text_to_audio(text_block: str, slide_number: int, output_dir: Path) -> Path:
+    return await asyncio.to_thread(
+        text_to_audio_sync, text_block, slide_number, output_dir
     )
+
+
+async def generate_audio_files(
+    session_id: str, explanations_json: dict[str, str]
+) -> list[Path]:
+    audio_dir = storage_manager.get_temp_audio_dir(session_id)
+    generated_files = []
+
+    tasks = []
+    for i, key in enumerate(explanations_json, 1):
+        text = explanations_json[key]
+        if text and text.strip():
+            tasks.append(text_to_audio(text, i, audio_dir))
+
+    results = await asyncio.gather(*tasks)
+    generated_files = list(results)
+
+    log.info("audio files generated", session_id=session_id, count=len(generated_files))
     return generated_files

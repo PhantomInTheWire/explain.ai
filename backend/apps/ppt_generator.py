@@ -1,16 +1,22 @@
 import json
-import logging
+import asyncio
 from pathlib import Path
 
 from fastapi import HTTPException
 from pptx import Presentation
 from pptx.util import Pt
 
-from backend.apps.promptops import process_user_question, set_session_json_slide
+from backend.apps.promptops import (
+    process_user_question,
+    process_user_question_sync,
+    set_session_json_slide,
+    set_session_json_slide_sync,
+)
 from backend.core.vectorstore import vectorstore_manager
 from backend.core.storage import storage_manager
+from backend.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 THEME_CONFIG = {
     "Theme1": (0, 1),
@@ -19,6 +25,36 @@ THEME_CONFIG = {
     "Theme4": (0, 10),
 }
 THEME_BASE_PATH = Path(__file__).parent.parent / "theme_pptx"
+
+
+def generate_presentation_sync(session_id: str, selected_theme: str = "Theme1") -> Path:
+    if not vectorstore_manager.collection_exists_sync(session_id):
+        raise ValueError("Please upload a PDF file first.")
+
+    prompt = """Write a powerpoint presentation about this document in JSON.
+The JSON should contain 'slides' and each slide should contain 'title' and 'content'.
+Use bullet points to make text engaging. Divide content into multiple slides if needed.
+Output only valid JSON with no explanations."""
+
+    try:
+        response_str = process_user_question_sync(session_id, prompt)
+        json_string = response_str.strip()
+
+        for prefix in ["```json", "```"]:
+            if json_string.startswith(prefix):
+                json_string = json_string[len(prefix) :]
+        if json_string.endswith("```"):
+            json_string = json_string[:-3]
+
+        json_pptx = json.loads(json_string.strip())
+        set_session_json_slide_sync(session_id, json_pptx)
+        return process_presentation_sync(session_id, json_pptx, selected_theme)
+    except json.JSONDecodeError as e:
+        log.error("json parsing error", error=str(e))
+        raise ValueError("Failed to parse presentation structure")
+    except Exception as e:
+        log.error("presentation generation error", error=str(e))
+        raise
 
 
 async def generate_presentation(
@@ -46,12 +82,12 @@ Output only valid JSON with no explanations."""
         await set_session_json_slide(session_id, json_pptx)
         return await process_presentation(session_id, json_pptx, selected_theme)
     except json.JSONDecodeError as e:
-        logger.error(f"JSON parsing error: {e}")
+        log.error("json parsing error", error=str(e))
         raise HTTPException(
             status_code=500, detail="Failed to parse presentation structure"
         )
     except Exception as e:
-        logger.error(f"Error generating presentation: {e}")
+        log.error("presentation generation error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -125,7 +161,7 @@ def create_slide(
                 r.font.size = Pt(14)
 
 
-async def process_presentation(
+def process_presentation_sync(
     session_id: str, json_data: dict, selected_theme: str = "Theme1"
 ) -> Path:
     validate_json_data_structure(json_data)
@@ -150,5 +186,13 @@ async def process_presentation(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     presentation.save(str(output_path))
 
-    logger.info(f"Generated presentation: {output_path}")
+    log.info("presentation generated", output_path=str(output_path))
     return output_path
+
+
+async def process_presentation(
+    session_id: str, json_data: dict, selected_theme: str = "Theme1"
+) -> Path:
+    return await asyncio.to_thread(
+        process_presentation_sync, session_id, json_data, selected_theme
+    )
