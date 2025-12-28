@@ -24,12 +24,6 @@ const useProgressStore = create<progressStoreInterface>((set) => ({
         })),
     setCurrentTheme: (newTheme: string) =>
         set(() => ({ currentTheme: newTheme })),
-    // toggleOutputChoice: (output: string) => () => ({
-    //     // let choice = state
-    //     set((state) => {
-    //         let choice = state.choices.fin
-    //     })
-    // }),
     toggleOutputChoice: (output: string) =>
         set((state) => {
             let choice = state.outputs.includes(output);

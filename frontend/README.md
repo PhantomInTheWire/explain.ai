@@ -1,1 +1,1 @@
-# Vedanta
+# ExplainAI

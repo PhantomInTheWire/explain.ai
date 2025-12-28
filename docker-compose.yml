@@ -13,7 +13,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - vedanta
+      - explainai
 
   backend:
     build:
@@ -42,7 +42,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - vedanta
+      - explainai
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -59,7 +59,7 @@ services:
     command: redis-server --appendonly yes
     restart: unless-stopped
     networks:
-      - vedanta
+      - explainai
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -81,7 +81,7 @@ services:
       - weaviate_data:/var/lib/weaviate
     restart: unless-stopped
     networks:
-      - vedanta
+      - explainai
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/v1/.well-known/ready"]
       interval: 10s
@@ -89,7 +89,7 @@ services:
       retries: 5
 
 networks:
-  vedanta:
+  explainai:
     driver: bridge
 
 volumes:

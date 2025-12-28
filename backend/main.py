@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
     logger.info("Application stopped")
 
 
-app = FastAPI(title="Vedanta API", version="2.0", lifespan=lifespan)
+app = FastAPI(title="ExplainAI API", version="2.0", lifespan=lifespan)
 
 app.add_middleware(SessionMiddleware)
 app.add_middleware(
@@ -52,7 +52,7 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"title": "Project Vedanta", "version": "2.0", "status": "multi-user"}
+    return {"title": "Project ExplainAI", "version": "2.0", "status": "multi-user"}
 
 
 @app.get("/health")
@@ -69,7 +69,6 @@ async def ready():
         raise HTTPException(status_code=503, detail=f"Not ready: {e}")
 
 
-# Session Management
 @app.post("/api/sessions")
 async def create_session():
     session_id = await session_manager.create_session()
@@ -88,7 +87,6 @@ async def get_session(session_id: str):
     return {"session": session, "jobs": jobs, "files": files}
 
 
-# Job Management
 @app.get("/api/jobs/{job_id}")
 async def get_job(job_id: str):
     job_manager = JobManager(session_manager.redis)
@@ -100,7 +98,6 @@ async def get_job(job_id: str):
     return {"job": job, "result": result}
 
 
-# Pipeline Endpoints
 async def run_upload_job(
     job_id: str, session_id: str, file_content: bytes, filename: str, content_type: str
 ):
@@ -241,7 +238,6 @@ async def generate_video_endpoint(request: Request, background_tasks: Background
     return {"job_id": job_id, "status": "pending"}
 
 
-# File Serving
 @app.get("/api/sessions/{session_id}/files/{filename}")
 async def get_session_file(session_id: str, filename: str):
     if not await session_manager.validate_session(session_id):
@@ -264,7 +260,6 @@ async def get_session_file(session_id: str, filename: str):
     )
 
 
-# Legacy endpoints for backwards compatibility
 @app.get("/api/get/{filename}")
 async def get_file_legacy(request: Request, filename: str):
     session_id = get_session_id(request)

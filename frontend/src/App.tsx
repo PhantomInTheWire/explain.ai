@@ -16,7 +16,6 @@ export default function App() {
                     <Route path="/about" element={<About />} />
                 </Routes>
             </main>
-            {/* <div className="container w-full min-h-screen absolute top-0"></div> */}
         </div>
     );
 }

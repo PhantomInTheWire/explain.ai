@@ -1,5 +1,5 @@
 [project]
-name = "vedanta-backend"
+name = "explainai-backend"
 version = "2.0.0"
 description = "Multi-user PDF to presentation and video pipeline"
 readme = "README.md"

@@ -58,7 +58,7 @@ const useSessionStore = create<SessionState>()(
             },
         }),
         {
-            name: "vedanta-session",
+            name: "explainai-session",
             partialize: (state) => ({ sessionId: state.sessionId }),
         }
     )
