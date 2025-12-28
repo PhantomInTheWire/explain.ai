@@ -1,75 +1,73 @@
 import logging
+from pathlib import Path
+
 import pdfplumber
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from langchain.text_splitter import CharacterTextSplitter
-from langchain_community.vectorstores import FAISS
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from vedanta.backend.knowledge_database.helper import set_knowledge_base
+
+from backend.core.vectorstore import vectorstore_manager
+from backend.core.storage import storage_manager
+
+logger = logging.getLogger(__name__)
 
 
-def process_file_context(file_text):
-    """
-    Process the file context by splitting the file text into chunks and creating embeddings.
-
-    Args:
-        file_text (str): The text content of the file.
-
-    Raises:
-        Exception: If an error occurs during the processing of the file context.
-
-    Returns:
-        None
-    """
-    try:
-        # split into chunks
-        text_splitter = CharacterTextSplitter(
-            separator="\n",
-            chunk_size=1000,
-            chunk_overlap=200,
-            length_function=len
-        )
-        chunks = text_splitter.split_text(file_text)
-
-        # create embeddings
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
-        knowledge_base = FAISS.from_texts(chunks, embeddings)
-        set_knowledge_base(knowledge_base)
-    except Exception as e:
-        logging.error(f"An error occurred during process_file_context(): {str(e)}")
-        raise Exception(f"An error occurred during process_file_context(): {str(e)}")
+async def extract_text_from_pdf(file_path: Path) -> str:
+    with pdfplumber.open(file_path) as pdf:
+        text = ""
+        for page in pdf.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
+        return text
 
 
-async def upload_file(file):
-    """
-    Uploads a file and processes its contents.
+async def process_file_context(
+    session_id: str, file_text: str, source_file: str = "uploaded.pdf"
+) -> int:
+    text_splitter = CharacterTextSplitter(
+        separator="\n", chunk_size=1000, chunk_overlap=200, length_function=len
+    )
+    chunks = text_splitter.split_text(file_text)
 
-    Args:
-        file (File): The file to be uploaded.
+    if not chunks:
+        raise ValueError("No text chunks extracted from PDF")
 
-    Raises:
-        HTTPException: If the file is not in the "application/pdf" format.
+    return await vectorstore_manager.add_documents(
+        session_id=session_id, chunks=chunks, source_file=source_file
+    )
 
-    Returns:
-        dict: A dictionary containing the extracted text from the PDF file and a success message.
 
-    Raises:
-        HTTPException: If an error occurs during the upload process.
-    """
+async def upload_file(session_id: str, file: UploadFile) -> dict:
     if file.content_type != "application/pdf":
-        raise HTTPException(status_code=400, detail="Invalid file format. Please upload a PDF file.")
+        raise HTTPException(
+            status_code=400, detail="Invalid file format. Please upload a PDF file."
+        )
 
     try:
-        with pdfplumber.open(file.file) as pdf:
-            text = ""
-            for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text += page_text
-                else:
-                    logging.warning("A page could not be processed and was skipped.")
+        file_content = await file.read()
+        file_path = await storage_manager.save_upload(
+            session_id=session_id, file_content=file_content, filename="source.pdf"
+        )
+        text = await extract_text_from_pdf(file_path)
 
-            process_file_context(text)
-            return {"text": text, "generated_text": "The PDF file was successfully uploaded."}
+        if not text.strip():
+            raise HTTPException(
+                status_code=400, detail="Could not extract text from PDF."
+            )
+
+        num_chunks = await process_file_context(
+            session_id=session_id,
+            file_text=text,
+            source_file=file.filename or "uploaded.pdf",
+        )
+
+        return {
+            "message": "PDF successfully processed.",
+            "filename": file.filename,
+            "chunks_created": num_chunks,
+        }
+    except HTTPException:
+        raise
     except Exception as e:
-        logging.error(f"An error occurred: {str(e)}")
+        logger.error(f"Error uploading file: {e}")
         raise HTTPException(status_code=500, detail=str(e))

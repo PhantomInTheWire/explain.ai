@@ -1,48 +1,50 @@
-import os
+import logging
+from pathlib import Path
+
 import moviepy.editor as mpe
 import pypdfium2 as pdfium
 
+from backend.core.storage import storage_manager
 
-def pdf_to_video(pdf_path, audio_dir, output_path, fps=1):
-    """Converts a PDF file to an MP4 video with audio for each page.
+logger = logging.getLogger(__name__)
 
-        Args:
-            pdf_path (str): Path to the PDF file.
-            audio_dir (str): Path to the directory containing audio files
-                             (one MP3 file per page, named "1.mp3", "2.mp3", etc.).
-            output_path (str, optional): Path to the output MP4 video file.
-                                         Defaults to "output.mp4".
-            fps (int, optional): Frames per second for the video.
-                                 Adjust based on audio length and desired pacing.
-                                 Defaults to 1.
-        """
 
-    # Load a document
-    pdf = pdfium.PdfDocument(pdf_path)
+async def pdf_to_video(
+    session_id: str, pdf_path: Path, output_filename: str = "video.mp4", fps: int = 1
+) -> Path:
+    temp_images_dir = storage_manager.get_temp_images_dir(session_id)
+    audio_dir = storage_manager.get_temp_audio_dir(session_id)
+    output_path = storage_manager.get_output_path(session_id, output_filename)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    temp_path = "backend/temp_images"
-    if not os.path.exists(temp_path):
-        os.makedirs(temp_path)
-    # Loop over pages and render
+    pdf = pdfium.PdfDocument(str(pdf_path))
+
     for i in range(len(pdf)):
         page = pdf[i]
         image = page.render(scale=4).to_pil()
-        image.save(f"{temp_path}/{i+1}.jpg")
+        image.save(str(temp_images_dir / f"{i + 1}.jpg"))
 
-    # Create video clips for each page with audio
     clips = []
     for i in range(len(pdf)):
-        image_path = f"{temp_path}/{i + 1}.jpg"
-        audio_path = f"{audio_dir}/{i + 1}.mp3"
+        image_path = temp_images_dir / f"{i + 1}.jpg"
+        audio_path = audio_dir / f"{i + 1}.mp3"
 
-        # Load image and audio
-        image_clip = mpe.ImageClip(image_path, duration=mpe.AudioFileClip(audio_path).duration)
-        audio_clip = mpe.AudioFileClip(audio_path)
+        if not image_path.exists() or not audio_path.exists():
+            continue
 
-        # Combine image and audio
-        final_clip = image_clip.set_audio(audio_clip)
-        clips.append(final_clip)
+        audio_clip = mpe.AudioFileClip(str(audio_path))
+        image_clip = mpe.ImageClip(str(image_path), duration=audio_clip.duration)
+        clips.append(image_clip.set_audio(audio_clip))
 
-    # Concatenate clips into a single video
+    if not clips:
+        raise ValueError("No clips generated. Ensure PDF and audio files exist.")
+
     final_video = mpe.concatenate_videoclips(clips, method="compose")
-    final_video.write_videofile(output_path, fps=fps)
+    final_video.write_videofile(str(output_path), fps=fps, logger=None)
+
+    for clip in clips:
+        clip.close()
+    final_video.close()
+
+    logger.info(f"Generated video: {output_path}")
+    return output_path
