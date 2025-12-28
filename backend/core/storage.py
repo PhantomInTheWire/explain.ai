@@ -1,11 +1,14 @@
-import logging
+import asyncio
 import shutil
 from pathlib import Path
 from typing import Optional
 
-from backend.core.config import settings
+import aiofiles
 
-logger = logging.getLogger(__name__)
+from backend.core.config import settings
+from backend.core.logging import get_logger
+
+log = get_logger(__name__)
 
 
 class StorageManager:
@@ -49,8 +52,11 @@ class StorageManager:
         if not session_dir.exists():
             return False
         shutil.rmtree(session_dir)
-        logger.info(f"Deleted session directory: {session_id}")
+        log.info("session directory deleted", session_id=session_id)
         return True
+
+    async def delete_session_directory_async(self, session_id: str) -> bool:
+        return await asyncio.to_thread(self.delete_session_directory, session_id)
 
     def session_exists(self, session_id: str) -> bool:
         return self._session_dir(session_id).exists()
@@ -71,14 +77,24 @@ class StorageManager:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    async def save_upload(
+    def save_upload_sync(
         self, session_id: str, file_content: bytes, filename: str = "source.pdf"
     ) -> Path:
         self.create_session_directories(session_id)
         file_path = self.get_upload_path(session_id, filename)
         with open(file_path, "wb") as f:
             f.write(file_content)
-        logger.info(f"Saved upload: {file_path}")
+        log.info("upload saved", file_path=str(file_path))
+        return file_path
+
+    async def save_upload(
+        self, session_id: str, file_content: bytes, filename: str = "source.pdf"
+    ) -> Path:
+        self.create_session_directories(session_id)
+        file_path = self.get_upload_path(session_id, filename)
+        async with aiofiles.open(file_path, "wb") as f:
+            await f.write(file_content)
+        log.info("upload saved", file_path=str(file_path))
         return file_path
 
     def get_file(self, session_id: str, filename: str) -> Optional[Path]:
@@ -103,6 +119,9 @@ class StorageManager:
         if temp_dir.exists():
             shutil.rmtree(temp_dir)
             temp_dir.mkdir(parents=True, exist_ok=True)
+
+    async def clean_temp_files_async(self, session_id: str) -> None:
+        await asyncio.to_thread(self.clean_temp_files, session_id)
 
     def list_sessions(self) -> list[str]:
         if not self.base_dir.exists():

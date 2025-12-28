@@ -1,4 +1,4 @@
-import logging
+import asyncio
 from typing import Optional
 
 import weaviate
@@ -7,8 +7,9 @@ from weaviate.classes.query import MetadataQuery
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from backend.core.config import settings
+from backend.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 
 class VectorStoreManager:
@@ -32,7 +33,8 @@ class VectorStoreManager:
                 if ":" in settings.weaviate_url.split("/")[-1]
                 else 8080
             )
-            self._client = weaviate.connect_to_custom(
+            self._client = await asyncio.to_thread(
+                weaviate.connect_to_custom,
                 http_host=host,
                 http_port=port,
                 http_secure=settings.weaviate_url.startswith("https"),
@@ -43,7 +45,33 @@ class VectorStoreManager:
 
         self._embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
         self._initialized = True
-        logger.info("Vector store manager initialized")
+        log.info("vectorstore initialized")
+
+    def _get_sync_client(self) -> weaviate.WeaviateClient:
+        if self._client is None:
+            host = (
+                settings.weaviate_url.replace("http://", "")
+                .replace("https://", "")
+                .split(":")[0]
+            )
+            port = (
+                int(settings.weaviate_url.split(":")[-1])
+                if ":" in settings.weaviate_url.split("/")[-1]
+                else 8080
+            )
+            self._client = weaviate.connect_to_custom(
+                http_host=host,
+                http_port=port,
+                http_secure=settings.weaviate_url.startswith("https"),
+                grpc_host=host,
+                grpc_port=50051,
+                grpc_secure=settings.weaviate_url.startswith("https"),
+            )
+            self._embeddings = GoogleGenerativeAIEmbeddings(
+                model="models/embedding-001"
+            )
+            self._initialized = True
+        return self._client
 
     def close(self) -> None:
         if self._client:
@@ -65,12 +93,13 @@ class VectorStoreManager:
     def _class_name(self, session_id: str) -> str:
         return f"Session_{session_id.replace('-', '_')}"
 
-    async def create_session_collection(self, session_id: str) -> None:
+    def _create_collection_sync(self, session_id: str) -> None:
+        client = self._get_sync_client()
         class_name = self._class_name(session_id)
-        if self.client.collections.exists(class_name):
+        if client.collections.exists(class_name):
             return
 
-        self.client.collections.create(
+        client.collections.create(
             name=class_name,
             vectorizer_config=Configure.Vectorizer.none(),
             properties=[
@@ -79,22 +108,35 @@ class VectorStoreManager:
                 Property(name="source_file", data_type=DataType.TEXT),
             ],
         )
-        logger.info(f"Created collection: {class_name}")
+        log.info("collection created", class_name=class_name)
 
-    async def delete_session_collection(self, session_id: str) -> bool:
+    async def create_session_collection(self, session_id: str) -> None:
+        await asyncio.to_thread(self._create_collection_sync, session_id)
+
+    def _delete_collection_sync(self, session_id: str) -> bool:
+        client = self._get_sync_client()
         class_name = self._class_name(session_id)
-        if not self.client.collections.exists(class_name):
+        if not client.collections.exists(class_name):
             return False
-        self.client.collections.delete(class_name)
-        logger.info(f"Deleted collection: {class_name}")
+        client.collections.delete(class_name)
+        log.info("collection deleted", class_name=class_name)
         return True
 
-    async def add_documents(
+    async def delete_session_collection(self, session_id: str) -> bool:
+        return await asyncio.to_thread(self._delete_collection_sync, session_id)
+
+    def add_documents_sync(
         self, session_id: str, chunks: list[str], source_file: str = "uploaded.pdf"
     ) -> int:
-        await self.create_session_collection(session_id)
-        collection = self.client.collections.get(self._class_name(session_id))
-        vectors = self.embeddings.embed_documents(chunks)
+        self._create_collection_sync(session_id)
+        client = self._get_sync_client()
+        collection = client.collections.get(self._class_name(session_id))
+
+        if self._embeddings is None:
+            self._embeddings = GoogleGenerativeAIEmbeddings(
+                model="models/embedding-001"
+            )
+        vectors = self._embeddings.embed_documents(chunks)
 
         with collection.batch.dynamic() as batch:
             for i, (chunk, vector) in enumerate(zip(chunks, vectors)):
@@ -107,18 +149,30 @@ class VectorStoreManager:
                     vector=vector,
                 )
 
-        logger.info(f"Added {len(chunks)} chunks for session {session_id}")
+        log.info("documents added", session_id=session_id, count=len(chunks))
         return len(chunks)
 
-    async def similarity_search(
+    async def add_documents(
+        self, session_id: str, chunks: list[str], source_file: str = "uploaded.pdf"
+    ) -> int:
+        return await asyncio.to_thread(
+            self.add_documents_sync, session_id, chunks, source_file
+        )
+
+    def similarity_search_sync(
         self, session_id: str, query: str, k: int = 4
     ) -> list[dict]:
+        client = self._get_sync_client()
         class_name = self._class_name(session_id)
-        if not self.client.collections.exists(class_name):
+        if not client.collections.exists(class_name):
             return []
 
-        collection = self.client.collections.get(class_name)
-        query_vector = self.embeddings.embed_query(query)
+        collection = client.collections.get(class_name)
+        if self._embeddings is None:
+            self._embeddings = GoogleGenerativeAIEmbeddings(
+                model="models/embedding-001"
+            )
+        query_vector = self._embeddings.embed_query(query)
         results = collection.query.near_vector(
             near_vector=query_vector,
             limit=k,
@@ -135,12 +189,20 @@ class VectorStoreManager:
             for obj in results.objects
         ]
 
-    async def get_all_documents(self, session_id: str) -> list[dict]:
+    async def similarity_search(
+        self, session_id: str, query: str, k: int = 4
+    ) -> list[dict]:
+        return await asyncio.to_thread(
+            self.similarity_search_sync, session_id, query, k
+        )
+
+    def get_all_documents_sync(self, session_id: str) -> list[dict]:
+        client = self._get_sync_client()
         class_name = self._class_name(session_id)
-        if not self.client.collections.exists(class_name):
+        if not client.collections.exists(class_name):
             return []
 
-        collection = self.client.collections.get(class_name)
+        collection = client.collections.get(class_name)
         docs = [
             {
                 "content": obj.properties.get("content", ""),
@@ -152,16 +214,27 @@ class VectorStoreManager:
         docs.sort(key=lambda x: x["chunk_index"])
         return docs
 
-    async def collection_exists(self, session_id: str) -> bool:
-        return self.client.collections.exists(self._class_name(session_id))
+    async def get_all_documents(self, session_id: str) -> list[dict]:
+        return await asyncio.to_thread(self.get_all_documents_sync, session_id)
 
-    async def list_collections(self) -> list[str]:
-        collections = self.client.collections.list_all()
+    def collection_exists_sync(self, session_id: str) -> bool:
+        client = self._get_sync_client()
+        return client.collections.exists(self._class_name(session_id))
+
+    async def collection_exists(self, session_id: str) -> bool:
+        return await asyncio.to_thread(self.collection_exists_sync, session_id)
+
+    def list_collections_sync(self) -> list[str]:
+        client = self._get_sync_client()
+        collections = client.collections.list_all()
         return [
             name.replace("Session_", "").replace("_", "-")
             for name in collections
             if name.startswith("Session_")
         ]
+
+    async def list_collections(self) -> list[str]:
+        return await asyncio.to_thread(self.list_collections_sync)
 
 
 vectorstore_manager = VectorStoreManager()

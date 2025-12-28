@@ -1,4 +1,3 @@
-import logging
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -6,8 +5,9 @@ from typing import Optional
 import redis.asyncio as redis
 
 from backend.core.config import settings
+from backend.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 
 class SessionManager:
@@ -24,7 +24,7 @@ class SessionManager:
             )
         await self._redis.ping()
         self._initialized = True
-        logger.info("Session manager initialized")
+        log.info("session manager initialized")
 
     async def close(self) -> None:
         if self._redis:
@@ -53,7 +53,7 @@ class SessionManager:
             mapping={"created_at": now, "last_access": now, "status": "active"},
         )
         await self.redis.expire(session_key, settings.session_ttl_seconds)
-        logger.info(f"Created session: {session_id}")
+        log.info("session created", session_id=session_id)
         return session_id
 
     async def validate_session(self, session_id: str) -> bool:
@@ -95,7 +95,7 @@ class SessionManager:
 
         deleted = await self.redis.delete(session_key, jobs_key)
         if deleted:
-            logger.info(f"Deleted session: {session_id}")
+            log.info("session deleted", session_id=session_id)
         return bool(deleted)
 
     async def list_sessions(self) -> list[str]:

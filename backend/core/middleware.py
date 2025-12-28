@@ -1,11 +1,10 @@
-import logging
-
 from fastapi import Request, Response, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.core.session import session_manager
+from backend.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 PUBLIC_PATHS = {
     "/",

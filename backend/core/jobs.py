@@ -1,6 +1,4 @@
 import json
-import logging
-import uuid
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
@@ -8,8 +6,9 @@ from typing import Any, Optional
 import redis.asyncio as redis
 
 from backend.core.config import settings
+from backend.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 
 class JobStatus(str, Enum):
@@ -40,6 +39,7 @@ class JobManager:
         self, session_id: str, job_type: JobType, metadata: Optional[dict] = None
     ) -> tuple[str, Optional[str]]:
         from backend.core.session import session_manager
+        import uuid
 
         active_jobs = await session_manager.count_active_jobs(session_id)
 
@@ -70,7 +70,9 @@ class JobManager:
         await self._redis.expire(job_key, settings.session_ttl_seconds)
         await session_manager.add_job_to_session(session_id, job_id)
 
-        logger.info(f"Created job {job_id} ({job_type.value}) for session {session_id}")
+        log.info(
+            "job created", job_id=job_id, job_type=job_type.value, session_id=session_id
+        )
         return job_id, None
 
     async def get_job(self, job_id: str) -> Optional[dict]:
