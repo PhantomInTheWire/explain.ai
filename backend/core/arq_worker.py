@@ -173,9 +173,9 @@ async def generate_video_task(ctx: dict, job_id: str, session_id: str) -> dict:
 
 class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
-    max_jobs = 10
-    job_timeout = 1800
-    keep_result = 3600
+    max_jobs = settings.arq_max_jobs
+    job_timeout = settings.arq_job_timeout
+    keep_result = settings.arq_keep_result
     queue_name = "default"
 
     functions: list[Function] = [
@@ -186,9 +186,9 @@ class WorkerSettings:
 
 class VideoWorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
-    max_jobs = 1  # CPU intensive - limit concurrency
-    job_timeout = 1800
-    keep_result = 3600
+    max_jobs = settings.arq_video_max_jobs
+    job_timeout = settings.arq_job_timeout
+    keep_result = settings.arq_keep_result
     queue_name = "video"
 
     functions: list[Function] = [
