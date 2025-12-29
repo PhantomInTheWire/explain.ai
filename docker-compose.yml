@@ -51,10 +51,10 @@ services:
       retries: 3
       start_period: 10s
 
-  celery-worker:
+  arq-worker:
     build:
       context: ./backend
-    command: celery -A core.celery:celery_app worker -Q default --loglevel=info --concurrency=4
+    command: arq core.arq_worker.WorkerSettings
     environment:
       - REDIS_URL=redis://redis:6379
       - WEAVIATE_URL=http://weaviate:8080
@@ -76,10 +76,10 @@ services:
     networks:
       - explainai
 
-  celery-video-worker:
+  arq-video-worker:
     build:
       context: ./backend
-    command: celery -A core.celery:celery_app worker -Q video --loglevel=info --concurrency=1
+    command: arq core.arq_worker.VideoWorkerSettings
     environment:
       - REDIS_URL=redis://redis:6379
       - WEAVIATE_URL=http://weaviate:8080
