@@ -26,6 +26,19 @@ export default function GeneratePage() {
 
     useEffect(() => {
         createSession();
+        
+        // Connect WebSocket when session is created
+        const sessionId = useSessionStore.getState().sessionId;
+        if (sessionId) {
+            console.log("Connecting WebSocket for session:", sessionId);
+            apiClient.connectWebSocket(sessionId);
+        }
+
+        // Cleanup WebSocket on unmount
+        return () => {
+            console.log("Disconnecting WebSocket");
+            apiClient.disconnectWebSocket();
+        };
     }, [createSession]);
 
     const choices = [
@@ -42,7 +55,8 @@ export default function GeneratePage() {
 
         try {
             const { job_id } = await apiClient.uploadPdf(file);
-            await apiClient.pollJobUntilComplete(job_id, (p) => setProgress(Math.min(p, 20)));
+            // Use WebSocket with polling fallback
+            await apiClient.pollJobWithWebSocket(job_id, (p) => setProgress(Math.min(p, 20)));
             setFileUploaded(true);
             setProgress(20);
         } catch (error) {
@@ -61,7 +75,8 @@ export default function GeneratePage() {
             if (outputForms.includes("Slides") || outputForms.length === 2) {
                 setStatusMessage("Generating presentation...");
                 const { job_id } = await apiClient.generatePresentation(selectedTheme);
-                await apiClient.pollJobUntilComplete(job_id, (p) =>
+                // Use WebSocket with polling fallback
+                await apiClient.pollJobWithWebSocket(job_id, (p) =>
                     setProgress(20 + Math.min(p * 0.4, 40))
                 );
                 setSlidesGenerated(true);
@@ -71,7 +86,8 @@ export default function GeneratePage() {
             if (outputForms.includes("Video") || outputForms.length === 2) {
                 setStatusMessage("Generating video...");
                 const { job_id } = await apiClient.generateVideo();
-                await apiClient.pollJobUntilComplete(job_id, (p) =>
+                // Use WebSocket with polling fallback
+                await apiClient.pollJobWithWebSocket(job_id, (p) =>
                     setProgress(60 + Math.min(p * 0.4, 40))
                 );
                 setVideoGenerated(true);
