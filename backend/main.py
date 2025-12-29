@@ -21,6 +21,7 @@ from core.storage import storage_manager
 from core.cleanup import cleanup_task
 from core.middleware import SessionMiddleware, get_session_id
 from core.websocket import websocket_manager
+from core.arq_worker import get_arq_pool, close_arq_pool
 
 setup_logging(debug=settings.debug)
 log = get_logger(__name__)
@@ -30,10 +31,12 @@ log = get_logger(__name__)
 async def lifespan(app: FastAPI):
     await session_manager.initialize()
     await vectorstore_manager.initialize()
+    await get_arq_pool()  # Initialize ARQ pool
     await cleanup_task.start()
     log.info("application started")
     yield
     await cleanup_task.stop()
+    await close_arq_pool()  # Close ARQ pool
     await vectorstore_manager.close()
     await session_manager.close()
     log.info("application stopped")
@@ -110,9 +113,10 @@ async def upload_pdf_endpoint(request: Request, file: UploadFile = File(...)):
 
     file_content = await file.read()
 
-    from apps.tasks import upload_pdf_task
-
-    upload_pdf_task.delay(
+    # Enqueue ARQ task
+    arq_pool = await get_arq_pool()
+    await arq_pool.enqueue_job(
+        "upload_pdf_task",
         job_id,
         session_id,
         file_content,
@@ -141,9 +145,9 @@ async def get_presentation_endpoint(request: Request):
     if error:
         raise HTTPException(status_code=429, detail=error)
 
-    from apps.tasks import generate_presentation_task
-
-    generate_presentation_task.delay(job_id, session_id, theme)
+    # Enqueue ARQ task
+    arq_pool = await get_arq_pool()
+    await arq_pool.enqueue_job("generate_presentation_task", job_id, session_id, theme)
 
     return {"job_id": job_id, "status": "pending"}
 
@@ -157,9 +161,14 @@ async def generate_video_endpoint(request: Request):
     if error:
         raise HTTPException(status_code=429, detail=error)
 
-    from apps.tasks import generate_video_task
-
-    generate_video_task.delay(job_id, session_id)
+    # Enqueue ARQ task on video queue
+    arq_pool = await get_arq_pool()
+    await arq_pool.enqueue_job(
+        "generate_video_task",
+        job_id,
+        session_id,
+        _queue_name="video",  # Route to video worker queue
+    )
 
     return {"job_id": job_id, "status": "pending"}
 
