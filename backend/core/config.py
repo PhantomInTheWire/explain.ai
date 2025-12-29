@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     max_concurrent_jobs_per_session: int = Field(default=3, alias="MAX_CONCURRENT_JOBS")
     data_dir: str = "/data/sessions"
     cleanup_interval_seconds: int = 300
+    arq_max_jobs: int = 10
+    arq_job_timeout: int = 1800  # 30 minutes
+    arq_keep_result: int = 3600  # 1 hour
     google_api_key: Optional[str] = None
     convertapi_key: Optional[str] = None
     google_application_credentials: Optional[str] = None
