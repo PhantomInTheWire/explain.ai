@@ -86,6 +86,7 @@ services:
       - DATA_DIR=/data/sessions
       - SESSION_TTL_SECONDS=3600
       - ARQ_VIDEO_MAX_JOBS=${ARQ_VIDEO_MAX_JOBS:-1}
+      - VIDEO_GPU_CODEC=${VIDEO_GPU_CODEC:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - CONVERTAPI_KEY=${CONVERTAPI_KEY}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
