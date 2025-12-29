@@ -13,8 +13,7 @@ log = get_logger(__name__)
 async def pdf_to_video(
     session_id: str, pdf_path: Path, output_filename: str = "video.mp4", fps: int = 1
 ) -> Path:
-    """Convert PDF to video with audio narration. Runs in thread pool as moviepy is CPU-intensive and synchronous."""
-
+    # moviepy is CPU-intensive and synchronous - run in thread pool
     def _generate_video():
         temp_images_dir = storage_manager.get_temp_images_dir(session_id)
         audio_dir = storage_manager.get_temp_audio_dir(session_id)

@@ -9,15 +9,11 @@ log = get_logger(__name__)
 
 
 class WebSocketManager:
-    """Manages WebSocket connections for real-time job updates"""
-
     def __init__(self):
-        # session_id -> list of WebSocket connections
         self.connections: dict[str, list[WebSocket]] = defaultdict(list)
         self._lock = asyncio.Lock()
 
     async def connect(self, session_id: str, websocket: WebSocket) -> None:
-        """Connect a WebSocket for a session"""
         await websocket.accept()
         async with self._lock:
             self.connections[session_id].append(websocket)
@@ -28,7 +24,6 @@ class WebSocketManager:
         )
 
     async def disconnect(self, session_id: str, websocket: WebSocket) -> None:
-        """Disconnect a WebSocket from a session"""
         async with self._lock:
             if session_id in self.connections:
                 try:
@@ -40,7 +35,6 @@ class WebSocketManager:
         log.debug("websocket disconnected", session_id=session_id)
 
     async def broadcast(self, session_id: str, message: dict) -> None:
-        """Broadcast a message to all WebSockets connected for a session"""
         async with self._lock:
             connections = self.connections.get(session_id, []).copy()
 
@@ -48,7 +42,6 @@ class WebSocketManager:
             log.debug("no websocket connections for broadcast", session_id=session_id)
             return
 
-        # Send to all connections, remove dead ones
         dead_connections = []
         for websocket in connections:
             try:
@@ -61,7 +54,6 @@ class WebSocketManager:
                 )
                 dead_connections.append(websocket)
 
-        # Clean up dead connections
         if dead_connections:
             async with self._lock:
                 for ws in dead_connections:
@@ -88,7 +80,6 @@ class WebSocketManager:
         error: str = "",
         result: Optional[dict] = None,
     ) -> None:
-        """Broadcast a job status update"""
         message = {
             "type": "job_update",
             "job_id": job_id,
@@ -103,5 +94,4 @@ class WebSocketManager:
         await self.broadcast(session_id, message)
 
 
-# Global WebSocket manager instance
 websocket_manager = WebSocketManager()

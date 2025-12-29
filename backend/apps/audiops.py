@@ -9,12 +9,10 @@ from core.logging import get_logger
 
 log = get_logger(__name__)
 
-# Global async TTS client for connection pooling
 _tts_client: Optional[texttospeech_v1.TextToSpeechAsyncClient] = None
 
 
 async def get_tts_client() -> texttospeech_v1.TextToSpeechAsyncClient:
-    """Get or create the global async TTS client (connection pooling)"""
     global _tts_client
     if _tts_client is None:
         _tts_client = texttospeech_v1.TextToSpeechAsyncClient()
@@ -23,7 +21,6 @@ async def get_tts_client() -> texttospeech_v1.TextToSpeechAsyncClient:
 
 
 async def close_tts_client() -> None:
-    """Close the global TTS client"""
     global _tts_client
     if _tts_client is not None:
         await _tts_client.close()
@@ -32,7 +29,6 @@ async def close_tts_client() -> None:
 
 
 async def text_to_audio(text_block: str, slide_number: int, output_dir: Path) -> Path:
-    """Convert text to audio using Google Cloud TTS async client"""
     client = await get_tts_client()
 
     synthesis_input = texttospeech_v1.SynthesisInput(text=text_block)
@@ -52,7 +48,6 @@ async def text_to_audio(text_block: str, slide_number: int, output_dir: Path) ->
 
     output_path = output_dir / f"{slide_number}.mp3"
 
-    # Write audio file (async I/O)
     async def _write_audio():
         with open(output_path, "wb") as out:
             out.write(response.audio_content)
@@ -65,7 +60,6 @@ async def text_to_audio(text_block: str, slide_number: int, output_dir: Path) ->
 async def generate_audio_files(
     session_id: str, explanations_json: dict[str, str]
 ) -> list[Path]:
-    """Generate audio files for all slide explanations in parallel"""
     audio_dir = storage_manager.get_temp_audio_dir(session_id)
 
     tasks = []

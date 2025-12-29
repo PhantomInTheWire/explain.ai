@@ -40,13 +40,11 @@ async def process_user_question(session_id: str, user_question: str) -> str:
         for r in results
     ]
     chain = get_conversational_chain()
-    # Use native async ainvoke method instead of asyncio.to_thread
     response = await chain.ainvoke({"input_documents": docs, "question": user_question})
     return response["output_text"]
 
 
 async def get_session_json_slide(session_id: str) -> dict | None:
-    """Get JSON slide data from session using async Redis"""
     try:
         redis = session_manager.redis
         data = await redis.hget(f"session:{session_id}", "json_slide")
@@ -56,7 +54,6 @@ async def get_session_json_slide(session_id: str) -> dict | None:
 
 
 async def set_session_json_slide(session_id: str, json_data: dict) -> None:
-    """Set JSON slide data in session using async Redis"""
     redis = session_manager.redis
     await redis.hset(f"session:{session_id}", "json_slide", json.dumps(json_data))
 

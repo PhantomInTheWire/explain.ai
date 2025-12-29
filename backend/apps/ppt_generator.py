@@ -127,8 +127,7 @@ def create_slide(
 async def process_presentation(
     session_id: str, json_data: dict, selected_theme: str = "Theme1"
 ) -> Path:
-    """Process presentation in thread pool since python-pptx is synchronous"""
-
+    # python-pptx is synchronous
     def _process():
         validate_json_data_structure(json_data)
 

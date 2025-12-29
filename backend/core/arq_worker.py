@@ -14,7 +14,6 @@ from core.websocket import websocket_manager
 log = get_logger(__name__)
 
 
-# Job progress update helper for ARQ tasks
 async def update_job_progress_arq(
     redis: ArqRedis,
     job_id: str,
@@ -23,7 +22,6 @@ async def update_job_progress_arq(
     progress: int,
     error: str = "",
 ) -> None:
-    """Update job progress in Redis and broadcast via WebSocket"""
     await redis.hset(
         f"job:{job_id}",
         mapping={
@@ -33,7 +31,6 @@ async def update_job_progress_arq(
             "error": error,
         },
     )
-    # Broadcast update via WebSocket
     await websocket_manager.broadcast_job_update(
         session_id=session_id,
         job_id=job_id,
@@ -46,11 +43,9 @@ async def update_job_progress_arq(
 async def complete_job_arq(
     redis: ArqRedis, job_id: str, session_id: str, result: dict
 ) -> None:
-    """Mark job as complete and store result"""
     await update_job_progress_arq(redis, job_id, session_id, "completed", 100)
     await redis.set(f"job:{job_id}:result", result)
     await redis.expire(f"job:{job_id}:result", settings.session_ttl_seconds)
-    # Broadcast completion with result
     await websocket_manager.broadcast_job_update(
         session_id=session_id,
         job_id=job_id,
@@ -63,11 +58,9 @@ async def complete_job_arq(
 async def fail_job_arq(
     redis: ArqRedis, job_id: str, session_id: str, error: str
 ) -> None:
-    """Mark job as failed"""
     await update_job_progress_arq(redis, job_id, session_id, "failed", 0, error)
 
 
-# ARQ Task Functions
 async def upload_pdf_task(
     ctx: dict,
     job_id: str,
@@ -76,7 +69,6 @@ async def upload_pdf_task(
     filename: str,
     content_type: str,
 ) -> dict:
-    """ARQ task for PDF upload and processing"""
     redis: ArqRedis = ctx["redis"]
     log.info("upload started", job_id=job_id, session_id=session_id)
 
@@ -99,7 +91,6 @@ async def upload_pdf_task(
 async def generate_presentation_task(
     ctx: dict, job_id: str, session_id: str, theme: str
 ) -> dict:
-    """ARQ task for presentation generation"""
     redis: ArqRedis = ctx["redis"]
     log.info(
         "presentation generation started",
@@ -143,7 +134,6 @@ async def generate_presentation_task(
 
 
 async def generate_video_task(ctx: dict, job_id: str, session_id: str) -> dict:
-    """ARQ task for video generation"""
     redis: ArqRedis = ctx["redis"]
     log.info("video generation started", job_id=job_id, session_id=session_id)
 
@@ -181,12 +171,11 @@ async def generate_video_task(ctx: dict, job_id: str, session_id: str) -> dict:
         raise
 
 
-# ARQ worker settings for default queue
 class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     max_jobs = 10
-    job_timeout = 1800  # 30 minutes
-    keep_result = 3600  # 1 hour
+    job_timeout = 1800
+    keep_result = 3600
     queue_name = "default"
 
     functions: list[Function] = [
@@ -195,12 +184,11 @@ class WorkerSettings:
     ]
 
 
-# ARQ worker settings for video queue
 class VideoWorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
-    max_jobs = 1  # Only 1 concurrent video job (CPU intensive)
-    job_timeout = 1800  # 30 minutes
-    keep_result = 3600  # 1 hour
+    max_jobs = 1  # CPU intensive - limit concurrency
+    job_timeout = 1800
+    keep_result = 3600
     queue_name = "video"
 
     functions: list[Function] = [
@@ -208,7 +196,6 @@ class VideoWorkerSettings:
     ]
 
 
-# Helper to get ARQ pool for job enqueueing from FastAPI
 _arq_pool: ArqRedis | None = None
 
 
