@@ -1,6 +1,14 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, UploadFile, File, Request, HTTPException
+from fastapi import (
+    FastAPI,
+    UploadFile,
+    File,
+    Request,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
@@ -12,6 +20,7 @@ from core.vectorstore import vectorstore_manager
 from core.storage import storage_manager
 from core.cleanup import cleanup_task
 from core.middleware import SessionMiddleware, get_session_id
+from core.websocket import websocket_manager
 
 setup_logging(debug=settings.debug)
 log = get_logger(__name__)
@@ -181,3 +190,27 @@ async def get_session_file(session_id: str, filename: str):
 async def get_file_legacy(request: Request, filename: str):
     session_id = get_session_id(request)
     return await get_session_file(session_id, filename)
+
+
+@app.websocket("/api/ws/{session_id}")
+async def websocket_endpoint(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for real-time job updates"""
+    await websocket_manager.connect(session_id, websocket)
+    log.debug("websocket connection established", session_id=session_id)
+
+    try:
+        # Keep connection alive and listen for messages (currently just ping/pong)
+        while True:
+            # Wait for any message from client (ping to keep alive)
+            try:
+                data = await websocket.receive_text()
+                # Echo back for ping/pong
+                if data == "ping":
+                    await websocket.send_text("pong")
+            except WebSocketDisconnect:
+                break
+    except Exception as e:
+        log.error("websocket error", session_id=session_id, error=str(e))
+    finally:
+        await websocket_manager.disconnect(session_id, websocket)
+        log.debug("websocket connection closed", session_id=session_id)
