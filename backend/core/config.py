@@ -24,9 +24,7 @@ class Settings(BaseSettings):
     arq_video_max_jobs: int = 1
     arq_job_timeout: int = 1800
     arq_keep_result: int = 3600
-    video_gpu_codec: Optional[str] = (
-        None  # GPU codec: h264_nvenc, hevc_nvenc, h264_videotoolbox, h264_qsv
-    )
+    video_gpu_codec: Optional[str] = "h264_videotoolbox"
     google_api_key: Optional[str] = None
     convertapi_key: Optional[str] = None
     google_application_credentials: Optional[str] = None
