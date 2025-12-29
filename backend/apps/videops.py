@@ -44,7 +44,6 @@ async def pdf_to_video(
 
         final_video = mpe.concatenate_videoclips(clips, method="compose")
 
-        # Configure GPU acceleration if available
         codec = None
         ffmpeg_params = None
 
@@ -52,18 +51,13 @@ async def pdf_to_video(
             codec = settings.video_gpu_codec
             log.info("using gpu codec", codec=codec)
 
-            # GPU-specific optimizations
             if "nvenc" in codec:
-                # NVIDIA NVENC - hardware encoding preset
                 ffmpeg_params = ["-preset", "p4", "-tune", "hq"]
             elif "videotoolbox" in codec:
-                # Apple VideoToolbox
                 ffmpeg_params = ["-profile:v", "high", "-level", "4.0"]
             elif "qsv" in codec:
-                # Intel Quick Sync
                 ffmpeg_params = ["-preset", "veryfast", "-global_quality", "23"]
         else:
-            # CPU encoding with libx264
             codec = "libx264"
             log.debug("using cpu codec", codec=codec)
 

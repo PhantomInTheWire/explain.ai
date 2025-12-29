@@ -13,7 +13,6 @@ log = get_logger(__name__)
 
 
 async def extract_text_from_pdf(file_path: Path) -> str:
-    # pdfplumber is synchronous
     def _extract():
         with pdfplumber.open(file_path) as pdf:
             text = ""

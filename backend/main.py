@@ -31,12 +31,12 @@ log = get_logger(__name__)
 async def lifespan(app: FastAPI):
     await session_manager.initialize()
     await vectorstore_manager.initialize()
-    await get_arq_pool()  # Initialize ARQ pool
+    await get_arq_pool()
     await cleanup_task.start()
     log.info("application started")
     yield
     await cleanup_task.stop()
-    await close_arq_pool()  # Close ARQ pool
+    await close_arq_pool()
     await vectorstore_manager.close()
     await session_manager.close()
     log.info("application stopped")
@@ -113,7 +113,6 @@ async def upload_pdf_endpoint(request: Request, file: UploadFile = File(...)):
 
     file_content = await file.read()
 
-    # Enqueue ARQ task
     arq_pool = await get_arq_pool()
     await arq_pool.enqueue_job(
         "upload_pdf_task",
@@ -145,7 +144,6 @@ async def get_presentation_endpoint(request: Request):
     if error:
         raise HTTPException(status_code=429, detail=error)
 
-    # Enqueue ARQ task
     arq_pool = await get_arq_pool()
     await arq_pool.enqueue_job("generate_presentation_task", job_id, session_id, theme)
 
@@ -161,13 +159,12 @@ async def generate_video_endpoint(request: Request):
     if error:
         raise HTTPException(status_code=429, detail=error)
 
-    # Enqueue ARQ task on video queue
     arq_pool = await get_arq_pool()
     await arq_pool.enqueue_job(
         "generate_video_task",
         job_id,
         session_id,
-        _queue_name="video",  # Route to video worker queue
+        _queue_name="video",
     )
 
     return {"job_id": job_id, "status": "pending"}
@@ -210,10 +207,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     try:
         # Keep connection alive and listen for messages (currently just ping/pong)
         while True:
-            # Wait for any message from client (ping to keep alive)
             try:
                 data = await websocket.receive_text()
-                # Echo back for ping/pong
                 if data == "ping":
                     await websocket.send_text("pong")
             except WebSocketDisconnect:
