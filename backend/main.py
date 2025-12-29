@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     log.info("application started")
     yield
     await cleanup_task.stop()
-    vectorstore_manager.close()
+    await vectorstore_manager.close()
     await session_manager.close()
     log.info("application stopped")
 
