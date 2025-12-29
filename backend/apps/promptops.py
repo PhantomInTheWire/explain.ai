@@ -1,6 +1,5 @@
 import json
 import asyncio
-import redis
 
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
@@ -8,7 +7,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import Document
 
 from core.vectorstore import vectorstore_manager
-from core.config import settings
+from core.session import session_manager
 from core.logging import get_logger
 
 log = get_logger(__name__)
@@ -16,7 +15,7 @@ log = get_logger(__name__)
 
 def get_conversational_chain():
     prompt_template = """Answer the question as detailed as possible from the provided context.
-    Context:\n {context}?\n Question: \n{question}\n
+    Context:\\n {context}?\\n Question: \\n{question}\\n
     Answer:
     """
     model = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.5)
@@ -46,26 +45,20 @@ async def process_user_question(session_id: str, user_question: str) -> str:
     return response["output_text"]
 
 
-def get_session_json_slide_sync(session_id: str) -> dict | None:
+async def get_session_json_slide(session_id: str) -> dict | None:
+    """Get JSON slide data from session using async Redis"""
     try:
-        redis_client = redis.from_url(settings.redis_url, decode_responses=True)
-        data = redis_client.hget(f"session:{session_id}", "json_slide")
+        redis = session_manager.redis
+        data = await redis.hget(f"session:{session_id}", "json_slide")
         return json.loads(data) if data else None
     except Exception:
         return None
 
 
-async def get_session_json_slide(session_id: str) -> dict | None:
-    return await asyncio.to_thread(get_session_json_slide_sync, session_id)
-
-
-def set_session_json_slide_sync(session_id: str, json_data: dict) -> None:
-    redis_client = redis.from_url(settings.redis_url, decode_responses=True)
-    redis_client.hset(f"session:{session_id}", "json_slide", json.dumps(json_data))
-
-
 async def set_session_json_slide(session_id: str, json_data: dict) -> None:
-    await asyncio.to_thread(set_session_json_slide_sync, session_id, json_data)
+    """Set JSON slide data in session using async Redis"""
+    redis = session_manager.redis
+    await redis.hset(f"session:{session_id}", "json_slide", json.dumps(json_data))
 
 
 async def generate_explanations(session_id: str) -> str:
@@ -74,7 +67,7 @@ async def generate_explanations(session_id: str) -> str:
         raise ValueError("No slide data found. Generate presentation first.")
 
     all_docs = await vectorstore_manager.get_all_documents(session_id)
-    context_text = "\n".join([doc["content"] for doc in all_docs[:10]])
+    context_text = "\\n".join([doc["content"] for doc in all_docs[:10]])
 
     prompt = f"""You are given slide data for a classroom lecture:
 {json.dumps(json_slides)}
